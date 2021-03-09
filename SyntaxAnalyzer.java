@@ -1,58 +1,64 @@
-import java.io.* ;
-
 // @Author: Yanko Mirov (37513192)
 
+import java.io.* ;
+
 public class SyntaxAnalyser extends AbstractSyntaxAnalyser {
-    public SyntaxAnalyser(String fileName) {
-        System.out.println("Analyzing syntax of " + fileName);
-        LexicalAnalyser la = new LexicalAnalyser("Program Folder/" + fileName);
+    private final String SPACES = "          ";
+    String fileName;
+    String spaceIndents = "";
+    public SyntaxAnalyser(String fileName) throws IOException {
+        this.fileName = fileName;
+        lex = new LexicalAnalyser(fileName);
     }
 
     @Override
     public void _statementPart_() throws IOException, CompilationException {
-        if (nextToken.symbol == Token.beginSymbol)
-            acceptTerminal(Token.beginSymbol);
-        else
-            myGenerate.reportError(nextToken, "...");
+        myGenerate.commenceNonterminal("<statement part>");
+        System.out.print(spaceIndents += SPACES); // 5 spaces
+        acceptTerminal(Token.beginSymbol);
         
         statementList();
-
-        if (nextToken.symbol == Token.endSymbol)
-            acceptTerminal(Token.endSymbol);
-        else
-            myGenerate.reportError(nextToken, "...");
-            
-        myGenerate.reportSucess(nextToken, "//");
+        acceptTerminal(Token.endSymbol);
+        myGenerate.finishNonterminal("<statement part>");
     }
 
     @Override
     public void acceptTerminal(int symbol) throws IOException, CompilationException {
         if (nextToken.symbol == symbol) {
-            System.out.println(nextToken.text);
+            myGenerate.insertTerminal(nextToken);
+
             nextToken = lex.getNextToken();
         }
         else {
-            myGenerate.reportError(Token.symbol, "Expected " + Token.getName(Token.symbol) + " but received " + nextToken.text);
+            Token token = new Token(nextToken.symbol, Token.getName(nextToken.symbol), nextToken.lineNumber);
+            myGenerate.reportError(nextToken, "Expected token " + Token.getName(symbol) + " but received " + nextToken + " in file " + fileName + " on line " + nextToken.lineNumber);
         }
     }
 
-    private void statementList() throws IOException, CompilationException { // TODO
+    private void statementList() throws IOException, CompilationException {
+        System.out.print(spaceIndents);
+        myGenerate.commenceNonterminal("<statement list>");
+        spaceIndents += SPACES;
         statement();
 
         while (nextToken.symbol == Token.semicolonSymbol) {
             acceptTerminal(nextToken.symbol);
             statement();
         }
-        
-        myGenerate.reportSucess(Token.eofSymbol, "//");
+
+        myGenerate.finishNonterminal("<statement list>");
     }
 
     private void statement() throws IOException, CompilationException {
-        switch (nextToken) {
-            case Token.identifierSymbol:
+        System.out.print(spaceIndents);
+        myGenerate.commenceNonterminal("<statement>");
+        spaceIndents += SPACES;
+
+        switch (nextToken.symbol) {
+            case Token.identifier:
                 assignmentStatement();
                 break;
-            case Token.ifSymbol
+            case Token.ifSymbol:
                 ifStatement();
                 break;
             case Token.whileSymbol:
@@ -68,234 +74,156 @@ public class SyntaxAnalyser extends AbstractSyntaxAnalyser {
                 forStatement();
                 break;
             default:
-                myGenerate.reportError(nextToken, "...");
+                myGenerate.reportError(nextToken, "Expected an assignment statement, an if statement, a while statement, a procedure statement, until statement, or a for loop.");
+                return;
         }
-        myGenerate.reportSucess(Token.eofSymbol, "//");
+        myGenerate.finishNonterminal("<statement>");
     }
 
     private void assignmentStatement() throws IOException, CompilationException {
-        if (nextToken.symbol == Token.identifier)
-            acceptTerminal(Token.identifier);
-        else
-            myGenerate.reportError(nextToken, "...");
+        myGenerate.commenceNonterminal("<assignment statement>");
+        acceptTerminal(Token.identifier);
         
-        if (nextToken.symbol == Token.becomesSymbol)
-            acceptTerminal(Token.becomesSymbol);
+        acceptTerminal(Token.becomesSymbol);
+        
+        if (nextToken.symbol != Token.stringConstant)
+            expression();
         else
-            myGenerate.reportError(nextToken, "...");
-            
-        switch (nextToken) { // TODO
-            case ...:
-                expression();
-                break;
-            case Token.identifier:
-                acceptTerminal(Token.stringConstant);
-                break;
-            default:
-                myGenerate.reportError(nextToken, "...");
-        }
-        myGenerate.reportSucess(Token.eofSymbol, "//");
+            acceptTerminal(Token.stringConstant);
+        
+        myGenerate.finishNonterminal("<assignment statement>");
     }
 
     private void ifStatement() throws IOException, CompilationException {
-        if (nextToken.symbol == Token.ifSymbol)
-            acceptTerminal(Token.ifSymbol);
-        else
-            myGenerate.reportError(nextToken, "...");
+        myGenerate.commenceNonterminal("<if statement>");
+        acceptTerminal(Token.ifSymbol);
 
         condition();
 
-        if (nextToken.symbol == Token.thenSymbol)
-            acceptTerminal(Token.thenSymbol);
-        else
-            myGenerate.reportError(nextToken, "...");
+        acceptTerminal(Token.thenSymbol);
 
         statementList();
 
-        switch (nextToken) { 
-            case Token.endSymbol
+        switch (nextToken.symbol) { 
+            case Token.endSymbol:
                 acceptTerminal(Token.endSymbol);
-                if (nextToken.symbol == Token.ifSymbol)
-                    acceptTerminal(Token.ifSymbol);
-                else
-                    myGenerate.reportError(nextToken, "...");
+                acceptTerminal(Token.ifSymbol);
                 break;
             case Token.elseSymbol:
                 acceptTerminal(Token.elseSymbol);
-
                 statementList();
-
-                if (nextToken.symbol == Token.endSymbol)
-                    acceptTerminal(Token.endSymbol);
-                else
-                    myGenerate.reportError(nextToken, "...");
-                
-                if (nextToken.symbol == Token.ifSymbol)
-                    acceptTerminal(Token.ifSymbol);
-                else
-                    myGenerate.reportError(nextToken, "...");
+                acceptTerminal(Token.endSymbol);
+                acceptTerminal(Token.ifSymbol);
                 break;
             default:
-                myGenerate.reportError(nextToken, "...");
+                myGenerate.reportError(nextToken, "Expected an end or else symbol but received " + Token.getName(nextToken.symbol));
         }
-        myGenerate.reportSucess(Token.eofSymbol, "//");
+        myGenerate.finishNonterminal("<if statement>");
     }
 
     private void whileStatement() throws IOException, CompilationException {
-        if (nextToken.symbol == Token.whileSymbol)
-            acceptTerminal(Token.whileSymbol);
-        else
-            myGenerate.reportError(nextToken, "...");
+        myGenerate.commenceNonterminal("<while statement>");
+
+        acceptTerminal(Token.whileSymbol);
 
         condition();
 
-        if (nextToken.symbol == Token.loopSymbol)
-            acceptTerminal(Token.loopSymbol);
-        else
-            myGenerate.reportError(nextToken, "...");
+        acceptTerminal(Token.loopSymbol);
 
         statementList();
 
-        if (nextToken.symbol == Token.endSymbol)
-            acceptTerminal(Token.endSymbol);
-        else
-            myGenerate.reportError(nextToken, "...");
+        acceptTerminal(Token.endSymbol);
 
-        if (nextToken.symbol == Token.loopSymbol)
-            acceptTerminal(Token.loopSymbol);
-        else
-            myGenerate.reportError(nextToken, "...");
-
-        myGenerate.reportSucess(Token.eofSymbol, "//");
+        acceptTerminal(Token.loopSymbol);
+        
+        myGenerate.finishNonterminal("<while statement>");
     }
 
     private void procedureStatement() throws IOException, CompilationException {
-        if (nextToken.symbol == Token.callSymbol)
-            acceptTerminal(Token.callSymbol);
-        else
-            myGenerate.reportError(nextToken, "...");
+        System.out.print(spaceIndents);
+        myGenerate.commenceNonterminal("<procedure statement>");
+        spaceIndents += SPACES;
 
-        if (nextToken.symbol == Token.identifier)
-            acceptTerminal(Token.identifier);
-        else
-            myGenerate.reportError(nextToken, "...");
+        acceptTerminal(Token.callSymbol);
+
+        acceptTerminal(Token.identifier);
         
-        if (nextToken.symbol == Token.leftParenthesis)
-            acceptTerminal(Token.leftParenthesis);
-        else
-            myGenerate.reportError(nextToken, "...");
+        acceptTerminal(Token.leftParenthesis);
 
         argumentList();
 
-        if (nextToken.symbol == Token.rightParenthesis)
-            acceptTerminal(Token.rightParenthesis);
-        else
-            myGenerate.reportError(nextToken, "...");
+        acceptTerminal(Token.rightParenthesis);
 
-        myGenerate.reportSucess(Token.eofSymbol, "//");
+        myGenerate.commenceNonterminal("<procedure statement>");
     }
 
     private void untilStatement() throws IOException, CompilationException {
-        if (nextToken.symbol == Token.doSymbol) 
-            acceptTerminal(Token.doSymbol);
-        else
-            myGenerate.reportError(nextToken, "...");
+        myGenerate.commenceNonterminal("<until statement>");
+
+        acceptTerminal(Token.doSymbol);
         
         statementList();
 
-        if (nextToken.symbol == Token.untilSymbol)
-            acceptTerminal(Token.untilSymbol);
-        else 
-            myGenerate.reportError(nextToken, "...");
+        acceptTerminal(Token.untilSymbol);
         
         condition();
 
-        myGenerate.reportSucess(Token.eofSymbol, "//");
+        myGenerate.finishNonterminal("<until statement>");
     }
 
     private void forStatement() throws IOException, CompilationException {
-        if (nextToken.symbol == Token.forSymbol)
-            acceptTerminal(nextToken.symbol);
-        else 
-            myGenerate.reportError(nextToken, "...");
+        myGenerate.commenceNonterminal("<for statement>");
+
+        acceptTerminal(nextToken.forSymbol);
+
+        acceptTerminal(nextToken.leftParenthesis);
+
+        assignmentStatement();
+
+        acceptTerminal(Token.semicolonSymbol);
         
-        if (nextToken.symbol == Token.leftParenthesis) {
-            acceptTerminal(nextToken.symbol);
+        condition();
 
-            assignmentStatement();
+        acceptTerminal(Token.semicolonSymbol);
+        
+        assignmentStatement();
 
-            if (nextToken.symbol == Token.semicolonSymbol)
-                acceptTerminal(Token.semicolonSymbol);
-            else
-                myGenerate.reportError(nextToken, "...");
-            
-            condition();
+        acceptTerminal(nextToken.rightParenthesis);
 
-            if (nextToken.symbol == Token.semicolonSymbol)
-                acceptTerminal(Token.semicolonSymbol);
-            else
-                myGenerate.reportError(nextToken, "...");
-            
-            assignmentStatement();
+        acceptTerminal(Token.doSymbol);
+        
+        statementList();
 
-            if (nextToken.symbol == Token.rightParenthesis)
-                acceptTerminal(nextToken.symbol);
-            else
-                myGenerate.reportError(nextToken, "...");
+        acceptTerminal(Token.endSymbol);
 
-            if (nextToken.symbol == Token.doSymbol)
-                acceptTerminal(Token.doSymbol);
-            else
-                myGenerate.reportError(nextToken, "...");
-            
-            statementList();
+        acceptTerminal(Token.loopSymbol);
 
-            if (nextToken.symbol == Token.endSymbol)
-                acceptTerminal(Token.endSymbol);
-            else
-                myGenerate.reportError(nextToken, "...");
-            
-            if (nextToken.symbol == Token.loopSymbol)
-                acceptTerminal(Token.loopSymbol);
-            else
-                myGenerate.reportError(nextToken, "...");
-        }
-        else 
-            myGenerate.reportError(nextToken, "...");
-
-        myGenerate.reportSucess(Token.eofSymbol, "//");
+        myGenerate.finishNonterminal("<for statement>");
     }
 
     private void argumentList() throws IOException, CompilationException {
-        System.out.println("312 BEGIN Argument List");
+        System.out.print(spaceIndents);
+        myGenerate.commenceNonterminal("<argument list>");
+        spaceIndents += SPACES;
 
-        if (nextToken.symbol == Token.identifier)
-            acceptTerminal(Token.identifier);
-        else
-            myGenerate.reportError(nextToken, "...");
+        acceptTerminal(Token.identifier);
             
         while (nextToken.symbol == Token.commaSymbol) {
-            acceptTerminal(nextToken.symbol);
-            if (nextToken.symbol == Token.identifier)
-                acceptTerminal(Token.identifier);
-            else
-                myGenerate.reportError(nextToken, "...");
+            acceptTerminal(Token.commaSymbol);
+            acceptTerminal(Token.identifier);
         }
-        
-        myGenerate.reportSucess(Token.eofSymbol, "//");
+        System.out.print(spaceIndents);
+        myGenerate.finishNonterminal("<argument list>");
     }
 
     private void condition() throws IOException, CompilationException {
-        System.out.println("312 BEGIN Condition");
+        myGenerate.commenceNonterminal("<condition>");
 
-        if (nextToken.symbol == Token.identifier)
-            acceptTerminal(Token.identifier);
-        else
-            myGenerate.reportError(nextToken, "...");
+        acceptTerminal(Token.identifier);
 
         conditionalOperator();
 
-        switch (nextToken) {
+        switch (nextToken.symbol) {
             case Token.identifier:
                 acceptTerminal(Token.identifier);
                 break;
@@ -306,15 +234,15 @@ public class SyntaxAnalyser extends AbstractSyntaxAnalyser {
                 acceptTerminal(Token.stringConstant);
                 break;
             default:
-                myGenerate.reportError(nextToken, "...");
+                myGenerate.reportError(nextToken,"Expected an identifier, a number constant or a string constant but received " + Token.getName(nextToken.symbol));
         }
 
-        myGenerate.reportSucess(Token.eofSymbol, "//");
+        myGenerate.finishNonterminal("<condition>");
     }
 
     private void conditionalOperator() throws IOException, CompilationException {
-        System.out.println("312 BEGIN Conditional Operator");
-        switch (nextToken) { 
+        myGenerate.commenceNonterminal("<conditional operator>");
+        switch (nextToken.symbol) { 
             case Token.greaterThanSymbol:
                 acceptTerminal(Token.greaterThanSymbol);
                 break;
@@ -324,8 +252,8 @@ public class SyntaxAnalyser extends AbstractSyntaxAnalyser {
             case Token.equalSymbol:
                 acceptTerminal(Token.equalSymbol);
                 break;
-            case ...: // TODO
-                acceptTerminal(...);
+            case Token.notEqualSymbol:
+                acceptTerminal(Token.notEqualSymbol);
                 break;
             case Token.lessThanSymbol:
                 acceptTerminal(Token.lessThanSymbol);
@@ -334,13 +262,13 @@ public class SyntaxAnalyser extends AbstractSyntaxAnalyser {
                 acceptTerminal(Token.lessEqualSymbol);
                 break;
             default:
-                myGenerate.reportError(nextToken, "...");
+                myGenerate.reportError(nextToken, "Expected a >, >=, ==, /=, <, <= symbol but received " + Token.getName(nextToken.symbol));
         }
-        myGenerate.reportSucess(Token.eofSymbol, "//");
+        myGenerate.finishNonterminal("<conditional operator>");
     }
 
     private void expression() throws IOException, CompilationException {
-        System.out.println("312 BEGIN Expression");
+        myGenerate.commenceNonterminal("<expression>");
         term();
 
         while (nextToken.symbol == Token.plusSymbol || nextToken.symbol == Token.minusSymbol) {
@@ -348,25 +276,25 @@ public class SyntaxAnalyser extends AbstractSyntaxAnalyser {
             term();
         }
 
-        myGenerate.reportSucess(Token, "//");
+        myGenerate.finishNonterminal("<expression>");
     }
 
     private void term() throws IOException, CompilationException {
-        System.out.println("312 BEGIN Term");
-        factor(); // TODO
+        myGenerate.commenceNonterminal("<term>");
+        factor();
  
         while (nextToken.symbol == Token.timesSymbol || nextToken.symbol == Token.divideSymbol) {
             acceptTerminal(nextToken.symbol);
             factor();
         } 
 
-        myGenerate.reportSucess(Token.eofSymbol, "//");
+        myGenerate.finishNonterminal("<term>");
      }
 
     private void factor() throws IOException, CompilationException {
-        System.out.println("312 BEGIN Factor");
+        myGenerate.commenceNonterminal("<factor>");
 
-        switch (nextToken) {
+        switch (nextToken.symbol) {
             case Token.identifier:
                 acceptTerminal(Token.identifier);
                 break;
@@ -379,8 +307,8 @@ public class SyntaxAnalyser extends AbstractSyntaxAnalyser {
                 acceptTerminal(Token.rightParenthesis);
                 break;
             default:
-                myGenerate.reportError(nextToken, "...");
+                myGenerate.reportError(nextToken, "Expected an identifier, a number constant, or an expression but received " + Token.getName(nextToken.symbol));
         }
-        myGenerate.reportSucess(Token.eofSymbol, "//");
+        myGenerate.finishNonterminal("<factor>");
     }
 }
